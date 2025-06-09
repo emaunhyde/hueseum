@@ -1,8 +1,16 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { getCanvasContext, drawCrosshairs } from '@/lib/utils/canvas';
 import { calculateImageDimensions } from '@/lib/utils/image';
+import { getPixelColorFromImage } from '@/lib/utils/pixel-color';
+import { getPixelGrid } from '@/lib/utils/pixel-grid';
 import type { Rectangle } from '@/lib/types';
 import { IMAGE_ANALYSIS_CONSTANTS } from '../types';
+
+export interface PixelColorData {
+  hex: string;
+  rgb: number[];
+  coordinates: { x: number; y: number };
+}
 
 // Utility to keep a value within a min-max range
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -11,11 +19,18 @@ export const useImageDisplay = (imageSrc: string) => {
   const leftCanvasRef = useRef<HTMLCanvasElement>(null);
   const rightCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const baseImageSrcRef = useRef<string | null>(null);
 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [selectionRect, setSelectionRect] = useState<Rectangle | null>(null);
   const [crosshairPosition, setCrosshairPosition] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
   const [isHoveringLeft, setIsHoveringLeft] = useState(false);
+  const [pixelColor, setPixelColor] = useState<PixelColorData | null>(null);
+  const [isLoadingPixelColor, setIsLoadingPixelColor] = useState(false);
+  const [hoverColor, setHoverColor] = useState<{ hex: string; rgb: number[] } | null>(null);
+  const [pixelGrid, setPixelGrid] = useState<string[][] | null>(null);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isHoveringRight, setIsHoveringRight] = useState(false);
 
   const drawLeftImage = useCallback(() => {
     const canvas = leftCanvasRef.current;
@@ -146,6 +161,9 @@ export const useImageDisplay = (imageSrc: string) => {
     const clickX = event.clientX - rect.left;
     const clickY = event.clientY - rect.top;
 
+    // Update mouse position to match click location for tooltip sync
+    setMousePosition({ x: event.clientX, y: event.clientY });
+
     // New crosshair position relative to current crop
     const relX = clickX / canvas.width;
     const relY = clickY / canvas.height;
@@ -165,18 +183,149 @@ export const useImageDisplay = (imageSrc: string) => {
 
     setSelectionRect({ ...selectionRect, x: newSelX, y: newSelY });
     setCrosshairPosition({ x: newCrosshairX, y: newCrosshairY });
-  }, [selectionRect]);
+
+    // Update hover color to match the clicked location
+    const updateHoverColorAtClick = async () => {
+      try {
+        const absoluteX = selectionRect.x + relX * selectionRect.width;
+        const absoluteY = selectionRect.y + relY * selectionRect.height;
+        const colorData = await getPixelColorFromImage(imageSrc, absoluteX, absoluteY);
+        setHoverColor({ hex: colorData.hex, rgb: colorData.rgb });
+      } catch {
+        // Ignore errors
+      }
+    };
+    updateHoverColorAtClick();
+  }, [selectionRect, imageSrc]);
+
+  // Update pixel color based on crosshair position
+  const updatePixelColor = useCallback(async () => {
+    const img = imageRef.current;
+    if (!img || !selectionRect || !imageLoaded) return;
+
+    try {
+      setIsLoadingPixelColor(true);
+      
+      // Calculate the absolute pixel coordinates in the original image
+      const absoluteX = selectionRect.x + crosshairPosition.x * selectionRect.width;
+      const absoluteY = selectionRect.y + crosshairPosition.y * selectionRect.height;
+      
+      const colorData = await getPixelColorFromImage(imageSrc, absoluteX, absoluteY);
+      setPixelColor(colorData);
+    } catch (error) {
+      console.error('Failed to get pixel color:', error);
+      setPixelColor(null);
+    } finally {
+      setIsLoadingPixelColor(false);
+    }
+  }, [imageSrc, selectionRect, crosshairPosition, imageLoaded]);
+
+  // Get hover color at specific canvas coordinates (currently unused but may be needed)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const getHoverColor = useCallback(async (canvasX: number, canvasY: number) => {
+    const img = imageRef.current;
+    const canvas = rightCanvasRef.current;
+    if (!img || !canvas || !selectionRect) return null;
+
+    try {
+      const relX = canvasX / canvas.width;
+      const relY = canvasY / canvas.height;
+      
+      // Calculate absolute pixel coordinates in the original image
+      const absoluteX = selectionRect.x + relX * selectionRect.width;
+      const absoluteY = selectionRect.y + relY * selectionRect.height;
+      
+      const colorData = await getPixelColorFromImage(imageSrc, absoluteX, absoluteY);
+      return { hex: colorData.hex, rgb: colorData.rgb };
+    } catch {
+      return null;
+    }
+  }, [imageSrc, selectionRect]);
+
+  // Handle mouse movement on right canvas
+  const handleRightMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
+
+    // Update mouse position for tooltip
+    setMousePosition({ x: event.clientX, y: event.clientY });
+
+    // Don't process if no selection rect
+    if (!selectionRect) return;
+
+    const relX = canvasX / canvas.width;
+    const relY = canvasY / canvas.height;
+    const absoluteX = selectionRect.x + relX * selectionRect.width;
+    const absoluteY = selectionRect.y + relY * selectionRect.height;
+
+    // Process color and grid asynchronously without blocking
+    Promise.all([
+      getPixelColorFromImage(imageSrc, absoluteX, absoluteY).then(colorData => ({
+        hex: colorData.hex,
+        rgb: colorData.rgb
+      })).catch(() => null),
+      getPixelGrid(imageSrc, absoluteX, absoluteY, 7).catch(() => null)
+    ]).then(([color, grid]) => {
+      setHoverColor(color);
+      setPixelGrid(grid);
+    });
+  }, [selectionRect, imageSrc]);
+
+  // Handle mouse enter/leave for right canvas
+  const handleRightPointerEnter = useCallback(() => setIsHoveringRight(true), []);
+  const handleRightPointerLeave = useCallback(() => {
+    setIsHoveringRight(false);
+    setHoverColor(null);
+    setPixelGrid(null);
+  }, []);
 
   // Simple callbacks that consumers (the canvas) can wire up
   const handleLeftPointerEnter = useCallback(() => setIsHoveringLeft(true), []);
   const handleLeftPointerLeave = useCallback(() => setIsHoveringLeft(false), []);
 
-  // Load image
+  // Load image - preserve viewfinder state for processed versions of the same base image
   useEffect(() => {
+    // Determine if this is a new base image or a processed version
+    let isNewBaseImage = false;
+    
+    if (!baseImageSrcRef.current) {
+      // First image load
+      isNewBaseImage = true;
+      baseImageSrcRef.current = imageSrc;
+    } else if (!imageSrc.startsWith('data:image/')) {
+      // New file-based image (not a processed data URL)
+      isNewBaseImage = baseImageSrcRef.current !== imageSrc;
+      if (isNewBaseImage) {
+        baseImageSrcRef.current = imageSrc;
+      }
+    }
+    // If imageSrc starts with 'data:image/', it's a processed version - don't reset viewfinder
+    
+    if (isNewBaseImage) {
+      // Reset all state for completely new base images
+      setImageLoaded(false);
+      setSelectionRect(null);
+      setPixelColor(null);
+      setHoverColor(null);
+      setPixelGrid(null);
+      setCrosshairPosition({ x: 0.5, y: 0.5 });
+    } else {
+      // For processed versions, just clear temporary color state but ensure re-render
+      setPixelColor(null);
+      setHoverColor(null);
+      setPixelGrid(null);
+      setImageLoaded(false); // Force reload to ensure immediate update
+    }
+    
     const img = new Image();
     img.onload = () => {
       imageRef.current = img;
       setImageLoaded(true);
+    };
+    img.onerror = () => {
+      console.error('Failed to load image:', imageSrc);
     };
     img.src = imageSrc;
   }, [imageSrc]);
@@ -218,6 +367,26 @@ export const useImageDisplay = (imageSrc: string) => {
     }
   }, [imageLoaded, selectionRect, crosshairPosition, isHoveringLeft, drawLeftImage, drawRightImage]);
 
+  // Force redraw when imageSrc changes (even if it's the same URL)
+  useEffect(() => {
+    if (imageLoaded && selectionRect) {
+      // Small delay to ensure the image is fully loaded
+      const timeoutId = setTimeout(() => {
+        drawLeftImage();
+        drawRightImage();
+      }, 10);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [imageSrc, imageLoaded, selectionRect, drawLeftImage, drawRightImage]);
+
+  // Update pixel color when crosshair position changes
+  useEffect(() => {
+    if (imageLoaded && selectionRect) {
+      updatePixelColor();
+    }
+  }, [updatePixelColor]);
+
   return {
     leftCanvasRef,
     rightCanvasRef,
@@ -225,6 +394,15 @@ export const useImageDisplay = (imageSrc: string) => {
     handleRightImageClick,
     handleLeftPointerEnter,
     handleLeftPointerLeave,
+    handleRightMouseMove,
+    handleRightPointerEnter,
+    handleRightPointerLeave,
     imageLoaded,
+    pixelColor,
+    isLoadingPixelColor,
+    hoverColor,
+    pixelGrid,
+    mousePosition,
+    isHoveringRight,
   };
 };

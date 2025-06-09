@@ -1,5 +1,6 @@
 export interface ImageDisplayProps {
   imageSrc: string;
+  onPixelColorChange?: (pixelColor: { hex: string; rgb: number[]; coordinates: { x: number; y: number } } | null, isLoading: boolean) => void;
 }
 
 export const IMAGE_ANALYSIS_CONSTANTS = {

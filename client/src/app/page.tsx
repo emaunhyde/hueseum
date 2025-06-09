@@ -1,29 +1,253 @@
 'use client';
 
-import { useState } from 'react';
-import { Box, Typography, Container, Stack, Fade } from '@mui/material';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Box, Typography, Container, Stack, Fade, Alert, CircularProgress, Tabs, Tab } from '@mui/material';
 import { FileUpload } from '@/features/file-upload';
 import { ImageDisplay } from '@/features/image-analysis';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
-import { SuspenseWrapper } from '@/components/ui/SuspenseWrapper';
+import { ColorPalette, ColorChart, PixelColorDisplay, ValueStudyControls, ValuePalette } from '@/components/ui';
+import { extractPalette, PaletteResponse } from '@/lib/api/palette';
+import { convertImageToValueStudy, rgbToLuminance } from '@/lib/utils/luminance';
+import { AllaPrimaColor } from '@/lib/utils/alla-prima';
+import type { PixelColorData } from '@/components/ui/PixelColorDisplay';
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [palette, setPalette] = useState<PaletteResponse | null>(null);
+  const [isLoadingPalette, setIsLoadingPalette] = useState(false);
+  const [paletteError, setPaletteError] = useState<string | null>(null);
+  const [pixelColor, setPixelColor] = useState<PixelColorData | null>(null);
+  const [isLoadingPixelColor, setIsLoadingPixelColor] = useState(false);
+  
+  // Value Study state
+  const [activeTab, setActiveTab] = useState(0);
+  const [valueStudySteps, setValueStudySteps] = useState(10);
+  const [enableEdgeDetection, setEnableEdgeDetection] = useState(false);
+  const [selectedAllaPrima, setSelectedAllaPrima] = useState<AllaPrimaColor | null>(null);
+  const [valueStudyImage, setValueStudyImage] = useState<string | null>(null);
+  const [isLoadingValueStudy, setIsLoadingValueStudy] = useState(false);
+  const [selectedLuminance, setSelectedLuminance] = useState<number | null>(null);
+  
+  // Reset value study when image changes
+  useEffect(() => {
+    setValueStudyImage(null);
+    setValueStudySteps(10);
+    setEnableEdgeDetection(false);
+    setSelectedAllaPrima(null);
+  }, [selectedImage]);
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedImage(e.target?.result as string);
+      reader.onload = async (e) => {
+        const imageData = e.target?.result as string;
+        setSelectedImage(imageData);
+        
+        // Extract palette automatically
+        setIsLoadingPalette(true);
+        setPaletteError(null);
+        
+        try {
+          const paletteResult = await extractPalette({ 
+            imageData,
+            size: 20 
+          });
+          setPalette(paletteResult);
+        } catch (error) {
+          setPaletteError(error instanceof Error ? error.message : 'Failed to extract palette');
+        } finally {
+          setIsLoadingPalette(false);
+        }
       };
       reader.readAsDataURL(file);
     }
   };
 
+  const handlePixelColorChange = useCallback((newPixelColor: PixelColorData | null, loading: boolean) => {
+    setPixelColor(newPixelColor);
+    setIsLoadingPixelColor(loading);
+    
+    // Calculate luminance for value study tab
+    if (newPixelColor && newPixelColor.rgb) {
+      const [r, g, b] = newPixelColor.rgb;
+      const luminance = rgbToLuminance(r, g, b);
+      setSelectedLuminance(luminance);
+    } else {
+      setSelectedLuminance(null);
+    }
+  }, []);
+
+  const generateValueStudy = useCallback(async () => {
+    if (!selectedImage) return;
+    
+    setIsLoadingValueStudy(true);
+    try {
+      const valueImage = await convertImageToValueStudy(selectedImage, valueStudySteps, enableEdgeDetection, selectedAllaPrima || undefined);
+      setValueStudyImage(valueImage);
+    } catch (error) {
+      console.error('Failed to generate value study:', error);
+    } finally {
+      setIsLoadingValueStudy(false);
+    }
+  }, [selectedImage, valueStudySteps, enableEdgeDetection, selectedAllaPrima]);
+
+  // Memoize the current image source to prevent unnecessary re-renders
+  const currentImageSrc = useMemo(() => {
+    if (activeTab === 0) {
+      return selectedImage;
+    } else {
+      // For value study tab, only return an image if we have one ready
+      // This ensures the ImageDisplay shows something immediately
+      return valueStudyImage || selectedImage;
+    }
+  }, [activeTab, selectedImage, valueStudyImage]);
+
+  const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+    
+    // If switching to value study tab and we don't have a value study image, generate it immediately
+    if (newValue === 1 && selectedImage && !valueStudyImage && !isLoadingValueStudy) {
+      generateValueStudy();
+    }
+  }, [selectedImage, valueStudyImage, isLoadingValueStudy, generateValueStudy]);
+
+  const handleValueStudyStepsChange = useCallback((steps: number) => {
+    setValueStudySteps(steps);
+    // Clear current image to trigger regeneration
+    setValueStudyImage(null);
+  }, []);
+
+  const handleEdgeDetectionChange = useCallback((enabled: boolean) => {
+    setEnableEdgeDetection(enabled);
+    // Clear current image to trigger regeneration
+    setValueStudyImage(null);
+  }, []);
+
+  const handleAllaPrimaChange = useCallback((color: AllaPrimaColor | null) => {
+    setSelectedAllaPrima(color);
+    // Clear current image to trigger regeneration
+    setValueStudyImage(null);
+  }, []);
+
+  // Generate value study when needed
+  useEffect(() => {
+    if (activeTab === 1 && selectedImage && !valueStudyImage && !isLoadingValueStudy) {
+      generateValueStudy();
+    }
+  }, [activeTab, selectedImage, valueStudyImage, isLoadingValueStudy, generateValueStudy]);
+
   if (selectedImage) {
+
     return (
-      <Box sx={{ p: 2 }}>
-        <ImageDisplay imageSrc={selectedImage} />
+      <Box sx={{ width: '100vw', py: 4 }}>
+        <Stack spacing={4}>
+          {/* Tabs */}
+          <Container maxWidth="lg">
+            <Tabs 
+              value={activeTab} 
+              onChange={handleTabChange}
+              sx={{ borderBottom: 1, borderColor: 'divider' }}
+            >
+              <Tab label="Color Analysis" />
+              <Tab label="Value Study" />
+            </Tabs>
+          </Container>
+
+          {/* Image Display */}
+          <Box sx={{ width: '100%' }}>
+            <ImageDisplay 
+              key={selectedImage} 
+              imageSrc={currentImageSrc} 
+              onPixelColorChange={handlePixelColorChange}
+            />
+          </Box>
+          
+          {/* Tab Content */}
+          <Container maxWidth="lg">
+            {activeTab === 0 && (
+              <Stack spacing={4}>
+                {/* Pixel Color Display */}
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <PixelColorDisplay
+                    pixelColor={pixelColor}
+                    isLoading={isLoadingPixelColor}
+                    title="Sampled Color"
+                  />
+                </Box>
+
+                {/* Palette Analysis */}
+                <Box>
+                  {isLoadingPalette && (
+                    <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                      <CircularProgress size={24} />
+                      <Typography variant="body2" color="text.secondary">
+                        Extracting color palette...
+                      </Typography>
+                    </Stack>
+                  )}
+                  
+                  {paletteError && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {paletteError}
+                    </Alert>
+                  )}
+                  
+                  {palette && !isLoadingPalette && (
+                    <Fade in timeout={600}>
+                      <Stack spacing={3}>
+                        {/* Color Prevalence Chart */}
+                        <ColorChart 
+                          colors={palette.palette}
+                          height={80}
+                          showPercentages={true}
+                        />
+                        
+                        {/* Individual Color Swatches */}
+                        <ColorPalette 
+                          colors={palette.palette.map(color => color.hex)}
+                          swatchSize="sm"
+                          layout="row"
+                          showColorValues={true}
+                        />
+                      </Stack>
+                    </Fade>
+                  )}
+                </Box>
+              </Stack>
+            )}
+
+            {activeTab === 1 && (
+              <Stack spacing={4}>
+                {/* Value Study Controls and Value Palette */}
+                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, flexWrap: 'wrap' }}>
+                  <ValueStudyControls
+                    steps={valueStudySteps}
+                    onStepsChange={handleValueStudyStepsChange}
+                    enableEdgeDetection={enableEdgeDetection}
+                    onEdgeDetectionChange={handleEdgeDetectionChange}
+                    selectedAllaPrima={selectedAllaPrima}
+                    onAllaPrimaChange={handleAllaPrimaChange}
+                  />
+                  <ValuePalette
+                    steps={valueStudySteps}
+                    selectedValue={selectedLuminance}
+                    allaPrimaColor={selectedAllaPrima}
+                    title="Value Steps"
+                  />
+                </Box>
+
+                {isLoadingValueStudy && (
+                  <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                    <CircularProgress size={24} />
+                    <Typography variant="body2" color="text.secondary">
+                      Generating value study...
+                    </Typography>
+                  </Stack>
+                )}
+              </Stack>
+            )}
+          </Container>
+        </Stack>
       </Box>
     );
   }
