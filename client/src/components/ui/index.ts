@@ -10,3 +10,5 @@ export * from './ColorBreakdown';
 export * from './ColorSpaceDisplay';
 export * from './ValueStudyControls';
 export * from './ValuePalette';
+export * from './DownloadOutlineButton';
+export * from './OutlineControls';

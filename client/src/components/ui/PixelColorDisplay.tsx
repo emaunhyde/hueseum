@@ -1,8 +1,10 @@
-import React from 'react';
-import { Box, Typography, Paper, Stack, Skeleton, Divider } from '@mui/material';
+import React, { useMemo } from 'react';
+import { Box, Typography, Paper, Stack, Skeleton, Divider, Chip, Tooltip } from '@mui/material';
 import { ColorSwatch } from './ColorSwatch';
 import { ColorBreakdown } from './ColorBreakdown';
 import { ColorSpaceDisplay } from './ColorSpaceDisplay';
+import { useColorName } from '@/hooks/useColorName';
+import { ColorNameResult } from '@/lib/utils/color-naming';
 
 export interface PixelColorData {
   hex: string;
@@ -12,6 +14,7 @@ export interface PixelColorData {
 
 export interface PixelColorDisplayProps {
   pixelColor: PixelColorData | null;
+  colorName?: ColorNameResult | null;
   isLoading?: boolean;
   error?: string | null;
   title?: string;
@@ -19,10 +22,19 @@ export interface PixelColorDisplayProps {
 
 export const PixelColorDisplay: React.FC<PixelColorDisplayProps> = ({
   pixelColor,
+  colorName: providedColorName,
   isLoading = false,
   error = null,
   title = "Pixel Color",
 }) => {
+  // Only use the hook if no color name is provided
+  const { colorName: hookColorName, isLoading: isLoadingColorName } = useColorName(
+    providedColorName ? undefined : pixelColor?.hex
+  );
+  
+  // Use provided color name or fallback to hook result
+  const colorName = providedColorName || hookColorName;
+  const isLoadingName = providedColorName ? false : isLoadingColorName;
   if (isLoading) {
     return (
       <Paper 
@@ -145,6 +157,29 @@ export const PixelColorDisplay: React.FC<PixelColorDisplayProps> = ({
       
       <Stack spacing={2} alignItems="center">
         <Stack spacing={1} alignItems="center">
+          {/* Color Name */}
+          {isLoadingName ? (
+            <Skeleton variant="text" width={120} height={28} />
+          ) : colorName ? (
+              <Chip
+                label={colorName.name}
+                size="small"
+                variant="outlined"
+                sx={{
+                  maxWidth: 200,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'primary.main',
+                  borderColor: colorName.source === 'api' ? 'primary.main' : 'grey.400',
+                  backgroundColor: colorName.source === 'api' ? 'primary.50' : 'grey.50',
+                  '& .MuiChip-label': {
+                    px: 1,
+                  },
+                }}
+              />
+          ) : null}
+          
+          {/* Hex Code */}
           <Typography 
             variant="body1" 
             sx={{ 

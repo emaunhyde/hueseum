@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+Pillow
+numpy
+opencv-python
+scikit-learn
+python-dotenv
+svgwrite

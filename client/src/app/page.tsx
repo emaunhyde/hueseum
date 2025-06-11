@@ -5,17 +5,19 @@ import { Box, Typography, Container, Stack, Fade, Alert, CircularProgress, Tabs,
 import { FileUpload } from '@/features/file-upload';
 import { ImageDisplay } from '@/features/image-analysis';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
-import { ColorPalette, ColorChart, PixelColorDisplay, ValueStudyControls, ValuePalette } from '@/components/ui';
+import { ColorPalette, ColorChart, PixelColorDisplay, ValueStudyControls, ValuePalette, DownloadOutlineButton } from '@/components/ui';
 import { extractPalette, PaletteResponse } from '@/lib/api/palette';
 import { convertImageToValueStudy, rgbToLuminance } from '@/lib/utils/luminance';
 import { AllaPrimaColor } from '@/lib/utils/alla-prima';
 import type { PixelColorData } from '@/components/ui/PixelColorDisplay';
+import { getColorNames, ColorNameResult } from '@/lib/utils/color-naming';
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [palette, setPalette] = useState<PaletteResponse | null>(null);
   const [isLoadingPalette, setIsLoadingPalette] = useState(false);
   const [paletteError, setPaletteError] = useState<string | null>(null);
+  const [paletteColorNames, setPaletteColorNames] = useState<ColorNameResult[]>([]);
   const [pixelColor, setPixelColor] = useState<PixelColorData | null>(null);
   const [isLoadingPixelColor, setIsLoadingPixelColor] = useState(false);
   
@@ -34,6 +36,7 @@ export default function Home() {
     setValueStudySteps(10);
     setEnableEdgeDetection(false);
     setSelectedAllaPrima(null);
+    setPaletteColorNames([]);
   }, [selectedImage]);
 
   const handleFileSelect = async (file: File) => {
@@ -53,6 +56,11 @@ export default function Home() {
             size: 20 
           });
           setPalette(paletteResult);
+          
+          // Fetch color names for the palette colors in a single batch call
+          const hexColors = paletteResult.palette.map(color => color.hex);
+          const colorNames = await getColorNames(hexColors);
+          setPaletteColorNames(colorNames);
         } catch (error) {
           setPaletteError(error instanceof Error ? error.message : 'Failed to extract palette');
         } finally {
@@ -91,15 +99,15 @@ export default function Home() {
     }
   }, [selectedImage, valueStudySteps, enableEdgeDetection, selectedAllaPrima]);
 
-  // Memoize the current image source to prevent unnecessary re-renders
+  // Only change image source when we actually need to show different content
+  // This prevents unnecessary pixel color resets during tab switches
   const currentImageSrc = useMemo(() => {
-    if (activeTab === 0) {
-      return selectedImage;
-    } else {
-      // For value study tab, only return an image if we have one ready
-      // This ensures the ImageDisplay shows something immediately
-      return valueStudyImage || selectedImage;
+    // For value study tab, show the value study image if available
+    if (activeTab === 1 && valueStudyImage) {
+      return valueStudyImage;
     }
+    // Otherwise always show the original image
+    return selectedImage;
   }, [activeTab, selectedImage, valueStudyImage]);
 
   const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
@@ -158,7 +166,7 @@ export default function Home() {
             <ImageDisplay 
               key={selectedImage} 
               imageSrc={currentImageSrc} 
-              onPixelColorChange={handlePixelColorChange}
+              onPixelColorChange={activeTab === 0 ? handlePixelColorChange : undefined}
             />
           </Box>
           
@@ -166,13 +174,21 @@ export default function Home() {
           <Container maxWidth="lg">
             {activeTab === 0 && (
               <Stack spacing={4}>
-                {/* Pixel Color Display */}
-                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                {/* Pixel Color Display and Download Button */}
+                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {/* Only render PixelColorDisplay on Color Analysis tab to prevent unnecessary API calls */}
                   <PixelColorDisplay
+                    key="color-analysis-pixel-display"
                     pixelColor={pixelColor}
                     isLoading={isLoadingPixelColor}
                     title="Sampled Color"
                   />
+                  <Box sx={{ pt: 1 }}>
+                    <DownloadOutlineButton
+                      imageData={selectedImage}
+                      variant="contained"
+                    />
+                  </Box>
                 </Box>
 
                 {/* Palette Analysis */}
@@ -205,6 +221,7 @@ export default function Home() {
                         {/* Individual Color Swatches */}
                         <ColorPalette 
                           colors={palette.palette.map(color => color.hex)}
+                          colorNames={paletteColorNames}
                           swatchSize="sm"
                           layout="row"
                           showColorValues={true}

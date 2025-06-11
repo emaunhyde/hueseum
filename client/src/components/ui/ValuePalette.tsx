@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Stack } from '@mui/material';
-import { rgbToLuminance, posterizeLuminance } from '@/lib/utils/luminance';
+import { posterizeLuminance } from '@/lib/utils/luminance';
 import { mapLuminanceToAllaPrima, AllaPrimaColor } from '@/lib/utils/alla-prima';
 
 export interface ValuePaletteProps {

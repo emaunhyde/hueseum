@@ -1,10 +1,11 @@
 import React from 'react';
 import { Box, Stack, Typography, Tooltip } from '@mui/material';
 import { ColorSwatch } from './ColorSwatch';
-import { ColorData } from '@/lib/api/palette';
+import { ColorNameResult } from '@/lib/utils/color-naming';
 
 export interface ColorPaletteProps {
-  colors: ColorData[];
+  colors: string[];
+  colorNames?: ColorNameResult[];
   title?: string;
   swatchSize?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   showColorValues?: boolean;
@@ -15,16 +16,31 @@ export interface ColorPaletteProps {
 
 export const ColorPalette: React.FC<ColorPaletteProps> = ({
   colors,
+  colorNames = [],
   title,
   swatchSize = 'sm',
   showColorValues = true,
   layout = 'row',
   maxColumns = 4,
 }) => {
-  const renderSwatch = (color: string, index: number) => (
+
+  const renderSwatch = (color: string, index: number) => {
+    // Safety check
+    if (!color) {
+      return null;
+    }
+    
+    const colorName = colorNames[index];
+    const tooltipTitle = showColorValues 
+      ? (colorName?.name && colorName.name !== color.toUpperCase() 
+          ? `${colorName.name} (${color.toUpperCase()})`
+          : color.toUpperCase())
+      : '';
+    
+    return (
     <Tooltip 
       key={color + index} 
-      title={showColorValues ? color.toUpperCase() : ''} 
+      title={tooltipTitle}
       placement="top"
     >
       <Box
@@ -46,7 +62,8 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
         />
       </Box>
     </Tooltip>
-  );
+    );
+  };
 
   const renderLayout = () => {
     if (layout === 'grid') {
@@ -59,7 +76,7 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
             justifyItems: 'center',
           }}
         >
-          {colors.map(renderSwatch)}
+          {colors.map((color, index) => renderSwatch(color, index))}
         </Box>
       );
     }
@@ -72,7 +89,7 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
         alignItems="flex-start"
         justifyContent="flex-start"
       >
-        {colors.map(renderSwatch)}
+        {colors.map((color, index) => renderSwatch(color, index))}
       </Stack>
     );
   };
