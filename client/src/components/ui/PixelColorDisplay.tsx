@@ -3,6 +3,7 @@ import { Box, Typography, Paper, Stack, Skeleton, Divider, Chip, Tooltip } from 
 import { ColorSwatch } from './ColorSwatch';
 import { ColorBreakdown } from './ColorBreakdown';
 import { ColorSpaceDisplay } from './ColorSpaceDisplay';
+import { MunsellDisplay } from './MunsellDisplay';
 import { useColorName } from '@/hooks/useColorName';
 import { ColorNameResult } from '@/lib/utils/color-naming';
 
@@ -127,85 +128,103 @@ export const PixelColorDisplay: React.FC<PixelColorDisplayProps> = ({
   }
 
   return (
-    <Paper 
-      elevation={2} 
-      sx={{ 
-        p: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 2,
-        minWidth: 200,
-        maxWidth: 250,
-        transition: 'all 0.2s ease-in-out',
-        '&:hover': {
-          elevation: 4,
-          transform: 'translateY(-2px)',
-        },
-      }}
-    >
-      <Typography variant="h6" sx={{ fontWeight: 600 }}>
-        {title}
-      </Typography>
-      
-      <ColorSwatch 
-        color={pixelColor.hex}
-        size="2xl"
-        shape="rounded"
-        showChecker={true}
-      />
-      
-      <Stack spacing={2} alignItems="center">
-        <Stack spacing={1} alignItems="center">
-          {/* Color Name */}
-          {isLoadingName ? (
-            <Skeleton variant="text" width={120} height={28} />
-          ) : colorName ? (
-              <Chip
-                label={colorName.name}
-                size="small"
-                variant="outlined"
-                sx={{
-                  maxWidth: 200,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: 'primary.main',
-                  borderColor: colorName.source === 'api' ? 'primary.main' : 'grey.400',
-                  backgroundColor: colorName.source === 'api' ? 'primary.50' : 'grey.50',
-                  '& .MuiChip-label': {
-                    px: 1,
-                  },
-                }}
-              />
-          ) : null}
-          
-          {/* Hex Code */}
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              fontFamily: 'monospace',
-              fontWeight: 600,
-              color: 'text.primary',
-            }}
-          >
-            {pixelColor.hex.toUpperCase()}
-          </Typography>
+    <Stack spacing={3} sx={{ alignItems: 'center' }}>
+      {/* Original Pixel Color Display */}
+      <Paper 
+        elevation={2} 
+        sx={{ 
+          p: 3,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 2,
+          minWidth: 200,
+          maxWidth: 250,
+          transition: 'all 0.2s ease-in-out',
+          '&:hover': {
+            elevation: 4,
+            transform: 'translateY(-2px)',
+          },
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          {title}
+        </Typography>
+        
+        <ColorSwatch 
+          color={pixelColor.hex}
+          size="2xl"
+          shape="rounded"
+          showChecker={true}
+        />
+        
+        <Stack spacing={2} alignItems="center">
+          <Stack spacing={1} alignItems="center">
+            {/* Color Name */}
+            {isLoadingName ? (
+              <Skeleton variant="text" width={120} height={28} />
+            ) : colorName ? (
+                <Chip
+                  label={colorName.name}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    maxWidth: 200,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'primary.main',
+                    borderColor: colorName.source === 'api' ? 'primary.main' : 'grey.400',
+                    backgroundColor: colorName.source === 'api' ? 'primary.50' : 'grey.50',
+                    '& .MuiChip-label': {
+                      px: 1,
+                    },
+                  }}
+                />
+            ) : null}
+            
+            {/* Hex Code */}
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                fontFamily: 'monospace',
+                fontWeight: 600,
+                color: 'text.primary',
+              }}
+            >
+              {pixelColor.hex.toUpperCase()}
+            </Typography>
+          </Stack>
+
+          {/* Color Breakdown Charts */}
+          <ColorBreakdown 
+            rgb={pixelColor.rgb}
+            size={100}
+          />
+
+          <Divider sx={{ width: '100%' }} />
+
+          {/* Color Space Information */}
+          <ColorSpaceDisplay 
+            hex={pixelColor.hex}
+          />
+
+          {/* Coordinates */}
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
+              Coordinates
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+              ({pixelColor.coordinates.x}, {pixelColor.coordinates.y})
+            </Typography>
+          </Box>
         </Stack>
+      </Paper>
 
-        {/* Color Breakdown Charts */}
-        <ColorBreakdown 
-          rgb={pixelColor.rgb}
-          size={100}
-        />
-
-        <Divider sx={{ width: '100%', my: 1 }} />
-
-        {/* Color Space Information */}
-        <ColorSpaceDisplay 
-          hex={pixelColor.hex}
-          compact={true}
-        />
-      </Stack>
-    </Paper>
+      {/* Munsell Match Display */}
+      <MunsellDisplay 
+        hex={pixelColor?.hex || null}
+        title="Munsell Match"
+      />
+    </Stack>
   );
 };

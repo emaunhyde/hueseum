@@ -5,12 +5,14 @@ import { Box, Typography, Container, Stack, Fade, Alert, CircularProgress, Tabs,
 import { FileUpload } from '@/features/file-upload';
 import { ImageDisplay } from '@/features/image-analysis';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
-import { ColorPalette, ColorChart, PixelColorDisplay, ValueStudyControls, ValuePalette, DownloadOutlineButton } from '@/components/ui';
+import { ColorPalette, ColorChart, PixelColorDisplay, ValueStudyControls, ValuePalette, DownloadOutlineButton, ColorWheel, MunsellHarmonyDisplay } from '@/components/ui';
 import { extractPalette, PaletteResponse } from '@/lib/api/palette';
 import { convertImageToValueStudy, rgbToLuminance } from '@/lib/utils/luminance';
 import { AllaPrimaColor } from '@/lib/utils/alla-prima';
 import type { PixelColorData } from '@/components/ui/PixelColorDisplay';
 import { getColorNames, ColorNameResult } from '@/lib/utils/color-naming';
+import { useColorSchemeAnalysis } from '@/hooks/useColorSchemeAnalysis';
+import { ColorSchemeColor } from '@/lib/api/color-scheme';
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -29,6 +31,19 @@ export default function Home() {
   const [valueStudyImage, setValueStudyImage] = useState<string | null>(null);
   const [isLoadingValueStudy, setIsLoadingValueStudy] = useState(false);
   const [selectedLuminance, setSelectedLuminance] = useState<number | null>(null);
+  
+  // Convert palette to color scheme format for analysis
+  const colorSchemeColors: ColorSchemeColor[] | null = useMemo(() => {
+    if (!palette) return null;
+    return palette.palette.map(color => ({
+      hex: color.hex,
+      rgb: color.rgb,
+      percentage: color.percentage
+    }));
+  }, [palette]);
+  
+  // Color scheme analysis
+  const { analysis: colorSchemeAnalysis, isLoading: isLoadingColorScheme, error: colorSchemeError } = useColorSchemeAnalysis(colorSchemeColors);
   
   // Reset value study when image changes
   useEffect(() => {
@@ -165,7 +180,7 @@ export default function Home() {
           <Box sx={{ width: '100%' }}>
             <ImageDisplay 
               key={selectedImage} 
-              imageSrc={currentImageSrc} 
+              imageSrc={currentImageSrc || selectedImage || ''} 
               onPixelColorChange={activeTab === 0 ? handlePixelColorChange : undefined}
             />
           </Box>
@@ -217,6 +232,39 @@ export default function Home() {
                           height={80}
                           showPercentages={true}
                         />
+                        
+                        {/* Color Harmony Analysis */}
+                        {isLoadingColorScheme && (
+                          <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                            <CircularProgress size={20} />
+                            <Typography variant="body2" color="text.secondary">
+                              Analyzing color harmony...
+                            </Typography>
+                          </Stack>
+                        )}
+                        
+                        {colorSchemeError && (
+                          <Alert severity="warning" sx={{ mb: 2 }}>
+                            Color scheme analysis failed: {colorSchemeError}
+                          </Alert>
+                        )}
+                        
+                        {colorSchemeAnalysis && !isLoadingColorScheme && (
+                          <ColorWheel
+                            positions={colorSchemeAnalysis.wheel_positions}
+                            relationships={colorSchemeAnalysis.relationships}
+                            scheme={colorSchemeAnalysis.scheme}
+                            size={320}
+                          />
+                        )}
+                        
+                        {/* Munsell Harmony Analysis */}
+                        {colorSchemeAnalysis && !isLoadingColorScheme && (
+                          <MunsellHarmonyDisplay
+                            positions={colorSchemeAnalysis.wheel_positions}
+                            title="Munsell Harmony Segments"
+                          />
+                        )}
                         
                         {/* Individual Color Swatches */}
                         <ColorPalette 

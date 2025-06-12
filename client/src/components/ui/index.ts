@@ -12,3 +12,7 @@ export * from './ValueStudyControls';
 export * from './ValuePalette';
 export * from './DownloadOutlineButton';
 export * from './OutlineControls';
+export * from './MunsellDisplay';
+export * from './MunsellSlice';
+export * from './MunsellHarmonyDisplay';
+export * from './ColorWheel';
